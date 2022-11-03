@@ -22,6 +22,10 @@
 #define PRINTF 17
 #define DECIMAL 18 //decimal
 #define QUOTATION 19 // '
+#define UnsignedInteger 20 //无符号数
+#define Integer 21
+#define Decimal 22 //小数
+#define Float 23  //科学技术法，如 1.123e+10
 #define LC 35 //{
 #define RC 36 //}
 #define LB 37 //[
@@ -64,18 +68,25 @@ white [\t\n ]
 digit [0-9]
 letter [A-Za-z]
 id ({letter}|_)({letter}|{digit}|_)*
-number [1-9]{digit}*
-signednumber ("+"|"-")?{number}  //有符号数
+
+UnsignedInteger [1-9]{digit}*
+Integer ("+"|"-")?{digit}+("e"(("+"|"-"){UnsignedInteger})?)?
+Decimal {Integer}.{digit}+
+Float {Integer}.{digit}+("e"(("+"|"-"){UnsignedInteger})?)?
+
 commentbegin "/*"
 commentelement .|\n
-commentend "*/"
+        commentend "*/"
 %x COMMENT
 %%
 {commentbegin} {BEGIN COMMENT; fprintf(yyout,"Begin a comment:\n");}
 <COMMENT>{commentelement} {fprintf(yyout,"%s",yytext);}
 <COMMENT>{commentend} {BEGIN INITIAL; fprintf(yyout,"\nthis comment End!\n");}
 {white}+ ;
-{number} {fprintf(yyout,"NUMBER %d %s\n",NUMBER,yytext);}
+{UnsignedInteger} {fprintf(yyout,"UnsignedInteger %d %s\n",UnsignedInteger,yytext);}
+{Integer} {fprintf(yyout,"Integer %d %s\n",Integer,yytext);}
+{Decimal} {fprintf(yyout,"Decimal %d %s\n",Decimal,yytext);}
+{Float} {fprintf(yyout,"Float %d %s\n",Float,yytext);}
 "void" {fprintf(yyout,"VOID %d %s\n",VOID,yytext);}
 "char" {fprintf(yyout,"CHAR %d %s\n",CHAR,yytext);}
 "int"  {fprintf(yyout,"INT %d %s\n",INT,yytext);}
