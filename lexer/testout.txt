@@ -1,0 +1,47 @@
+token name value
+DIVOP 47 /
+DIVOP 47 /
+DIVOP 47 /
+DIVOP 47 /
+ID 70 Created
+ID 70 by
+瞿立燊ID 70 on
+Decimal 22 2022/11
+DIVOP 47 /
+UnsignedInteger 20 3
+.DIVOP 47 /
+DIVOP 47 /
+SHA 65 #
+ID 70 include
+RELL 52 <
+ID 70 stdio
+.ID 70 h
+RELG 50 >
+INT 3 int
+ID 70 main
+LP 39 (
+RP 40 )
+LC 35 {
+Begin a comment:
+
+     这些都是注释
+      这些都是注释
+       这些都是注释
+        这些都是注释
+         这些都是注释 这些都是注释 这些都是注释 这些都是注释
+          这些都是注释
+           这些都是注释
+     这些都是注释
+      这些都是注释
+     
+this comment End!
+PRINTF 17 printf
+LP 39 (
+"ID 70 hello
+ID 70 world
+"RP 40 )
+SEMI 66 ;
+RETURN 6 return
+Integer 21 0
+SEMI 66 ;
+RC 36 }

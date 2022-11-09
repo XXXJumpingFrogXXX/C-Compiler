@@ -1,0 +1,52 @@
+token name value
+Comments 45 //
+Comments 45 // Created by 瞿立燊 on 2022/11/3.
+Comments 45 //
+HASH 86 #
+ID 38 include
+RELL 66 <
+ID 38 stdio
+.ID 38 h
+RELG 64 >
+INT 21 int
+ID 38 main
+LP 50 (
+RP 51 )
+LC 46 {
+Comments 45 /*
+     这些都是注释
+      这些都是注释
+       这些都是注释
+        这些都是注释
+         这些都是注释 这些都是注释 这些都是注释 这些都是注释
+          这些都是注释
+           这些都是注释
+     这些都是注释
+      这些都是注释
+     */
+CHAR 22 char
+ID 38 a
+EQUAL 72 =
+Character 43 'a'
+SEMI 87 ;
+ID 38 printf
+LP 50 (
+String 44 "hello world"
+RP 51 )
+SEMI 87 ;
+ID 38 printf
+LP 50 (
+String 44 "%c"
+COMMA 85 ,
+ID 38 a
+RP 51 )
+SEMI 87 ;
+INT 21 int
+ID 38 b
+EQUAL 72 =
+Integer 40 +0
+SEMI 87 ;
+RETURN 19 return
+UnsignedInteger 39 0
+SEMI 87 ;
+RC 47 }
