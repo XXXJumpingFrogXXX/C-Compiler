@@ -14,6 +14,9 @@
 
 主目录下
 lex lexer.l
+
 yacc -d -v parser3.y
+
 gcc -ll -w y.tab.c
+
 ./a.out<input1.c
