@@ -9,3 +9,11 @@
 4.运行 ./first < main.c（main.c是你要进行词法分析的文件）
 
 5.最终得到记号文件 testout.txt
+
+##语法树文件使用
+
+主目录下
+lex lexer.l
+yacc -d -v parser3.y
+gcc -ll -w y.tab.c
+./a.out<input1.c
