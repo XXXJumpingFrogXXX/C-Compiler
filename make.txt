@@ -1,0 +1,16 @@
+flex lexer.l
+bison -dv parser.y
+g++ parser.tab.c lex.yy.c  
+./a.out < input.c
+nasm -f elf target.asm -o target.o
+gcc -m32 target.o -o target
+./target
+
+rm target
+rm target.o
+rm target.asm
+rm a.out
+rm lex.yy.c
+rm parser.output
+rm parser.tab.h
+rm parser.tab.c 

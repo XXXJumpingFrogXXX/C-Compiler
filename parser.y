@@ -1,603 +1,677 @@
 %{
-    #include<stdio.h>
-    #include<string.h>
-    #include<stdlib.h>
-    #include<ctype.h>
-	extern char* yytext;
-    struct node {
-        struct node *left;
-        struct node *right;
-        char *token;
-        char *type;
-    };
-    void add(char);
-    void insert_type();
-    int search(char *);
-    	void insert_type();
-    	void print_tree(struct node*);
-    	void print_tree_util(struct node*, int);
-    	void print_inorder(struct node *);
-    void check_declaration(char *);
-    	void check_return_type(char *);
-    	int check_types(char *, char *);
-    	char *get_type(char *);
-    struct dataType {
-            char * id_name;
-            char * data_type;
-            char * type;
-            int line_no;
-    	} symbol_table[100];
-    void newscope();
-    void delscope();
-    int count=0;
-    int q;
-    	char type[10];
-    extern int countn;
-    	struct node *head;
-    	int sem_errors=0;
-    	int ic_idx=0;
-    	int temp_var=0;
-    	int label=0;
-    	int is_for=0;
-    	char buff[100];
-    	char errors[10][100];
-    	char reserved[13][10] = {"int", "float", "char", "void", "if", "else", "for", "main", "return", "include","printf","scanf","while"};
-    	char icg[100][100];
-    void yyerror(const char *s);
-    int yylex();
-    int yywrap();
-
-    int vec_left[100] = {0};
-    void Display(struct node* root, int ident);
-
-    void printtree(struct node*);
-    void printInorder(struct node *);
-    struct node* mknode(struct node *left, struct node *right, char *token,char *type);
-
-    extern int countn;
-    struct node *head;
-
+	#include"node.h"
+	#include"table.h"
+	#include"address3.h"
+	#include"writeasm.h"
+	extern int yylex();
+	int yyerror(const char* msg);
+	Node* root;
+	bool parse_error = false;
+	int cntt=0;
+	char error_str[128][128];
+	void print(Node* p, int interval);
+	void insertChildren(Node*par, ...);
+	void returnError(Node*t, Node*root);
+	void insertError(int type, string arg1, string arg2, int line);
 %}
 
-%union {
-	struct var_name {
-        			char name[100];
-        			struct node* nd;
-        		} nd_obj;
-
-        		struct var_name2 {
-        			char name[100];
-        			struct node* nd;
-        			char type[5];
-        		} nd_obj2;
-
-        		struct var_name3 {
-        			char name[100];
-        			struct node* nd;
-        			char if_body[5];
-        			char else_body[5];
-        		} nd_obj3;
+%union{
+	char* str;
+	class Node* node;
 }
+%token<node> INTEGER
+%token<node> ID
+%token<node> MAIN COMMA VOID LP RP PRINTF IF FOR WHILE  DOT COLON RETURN SELFPLUS SELFMINUS
+%token<node> POINT ADDR TYPE PLUS MINUS MULTIPLY DIVIDE POW MODEL
+%token<node> ASSIGN INCLUDE ELSE SCANF
+%token<node> LMB RMB SEMICOLON ERROR LBRACE RBRACE
+%token<node> GREATER LESS NEQUAL EQUAL NOT GREATEREQ LESSEQ AND OR
+%type<node> Compound Content Conclude VarInt Expr InitInt BeforeMain MainFunc Include Before
+%type<node> Opnum OpnumNull Outputk ForHeader Inputk Type VarOpnum Loop Condition IDdec Const start ReturnStmt
+%type<node> Array DecArray InitArray InitArrayInner
 
-%token <nd_obj> CHARACTER PRINTFF SCANFF INT FLOAT CHAR FOR WHILE IF ELSE TRUE FALSE NUMBER FLOAT_NUM ID LE GE EQ NE NOO GT LT AND OR STR ADD MULTIPLY DIVIDE MODE SUBTRACT UNARY INCLUDE RETURN VOID
-%type <nd_obj> headers main body ope return datatype statement arithmetic1 arithmetic2 relop program  else luoji ans hhh
-%type<nd_obj2> init value fei expression txpression hxpression
-%type <nd_obj3> condition
+%nonassoc LOWEST
+%right ASSIGN
+%left OR
+%left AND
+%left EQUAL NEQUAL
+%left GREATER LESS GREATEREQ LESSEQ
+%left PLUS MINUS
+%left MULTIPLY DIVIDE MODEL
+%right POW
+%nonassoc RETURN PRINTF SCANF IF FOR WHILE RBRACE TYPE
+%right SELFPLUS SELFMINUS NOT ADDR POINT
+%left LP RP
+%nonassoc ID INTEGER
+%nonassoc LBRACE
+%nonassoc ELSE
+%nonassoc SEMICOLON
+%right MINUSINTEGER
+%%
+ // 开始符号
+start:		BeforeMain MainFunc
+	{$$=new Node("Program", 0);insertChildren($$, $1, $2, new Node("$", 0));print($$, 2);root = $$;}
+	|	MainFunc
+	{$$=new Node("Program", 0);insertChildren($$, $1, new Node("$", 0));print($$, 2);root = $$;}
+ ;
+
+
+MainFunc: 	Type MAIN LP RP Compound
+	{$$=new Node("MainFunc", 0);insertChildren($$, $1, $2, $5, new Node("$", 0));returnError($1, $5);}
+	|	Type MAIN RP Compound
+	{$$=new Node("MainFunc", 0);insertChildren($$, $1, $2, $4, new Node("$", 0));
+	insertError(1,"(","",$2->line);returnError($1, $4);
+	parse_error = true;}
+	|	Type MAIN LP Compound
+	{$$=new Node("MainFunc", 0);insertChildren($$, $1, $2, $4, new Node("$", 0));
+	insertError(1,")","",$3->line);returnError($1, $4);
+	parse_error = true;}
+	|	Type MAIN Compound
+	{$$=new Node("MainFunc", 0);insertChildren($$, $1, $2, $3, new Node("$", 0));
+	insertError(2,"(",")",$2->line);returnError($1, $3);
+	parse_error = true;}
+	;
+
+Type: 	TYPE	{$$=$1;}
+	|	VOID	{$$=$1;}	
+	;
+
+ // 大括号包起来的部分
+Compound:		LBRACE Content RBRACE {$$=$2;}
+	|			LBRACE RBRACE {$$=new Node("Compound", 0);}
+	// 缺右括号
+	|			LBRACE Content %prec LOWEST
+	{$$=$2;insertError(1,"}","",$$->line);parse_error = true;}
+	|			LBRACE %prec LOWEST
+	{$$=new Node("Compound", 0);insertError(1,"}","",$$->line);parse_error = true;}
+	;
+
+ // 大括号里包含的内容
+Content:		Conclude
+		{$$=new Node("Compound", 0);insertChildren($$,$1,new Node("$", 0));}
+	|			Content Conclude
+		{insertChildren($$,$2,new Node("$", 0));}
+	;
+ // 大括号里包含的内容的具体归纳
+Conclude:		VarInt	SEMICOLON			{$$=$1;}
+	|			DecArray	SEMICOLON		{$$=$1;}
+	|			VarInt						{$$=$1;insertError(1,";","",$$->line);parse_error = true;}
+	|			Opnum SEMICOLON				{$$=$1;}
+	|			Opnum %prec LOWEST			{$$=$1;insertError(1,";","",$$->line);parse_error = true;}
+	|			Loop						{$$=$1;}
+	|			Condition					{$$=$1;}
+	|			ReturnStmt					{$$=$1;}
+	|			Outputk						{$$=$1;}
+	|			Inputk						{$$=$1;}
+	;
+ 
+ // 输出的语句
+Outputk:		PRINTF OpnumNull SEMICOLON 
+	{$$=new Node("Outputk", 0);insertChildren($$, $2, new Node("$", 0));
+	if($2->key == "NULL"){
+		insertError(1,"expr","",$2->line);parse_error = true;}
+	}
+	|			PRINTF OpnumNull
+	{$$=new Node("Outputk", 0);insertChildren($$, $2, new Node("$", 0));
+	if($2->key == "NULL"){
+		insertError(1,"expr","",$2->line);
+	}
+	insertError(1,";","",$2->line);	parse_error = true;}
+	;
+
+Inputk:			SCANF IDdec SEMICOLON
+	{$$=new Node("Inputk", 0); insertChildren($$, $2, new Node("$", 0));}
+	|			SCANF IDdec
+	{$$=new Node("Inputk", 0); insertChildren($$, $2, new Node("$", 0));
+	insertError(1,";","",$2->line);parse_error = true;}
+	;
+
+ // 返回的语句
+ReturnStmt:	RETURN SEMICOLON
+	{$$=$1;$$->key="Return statement";}
+	|			RETURN %prec LOWEST // return后缺少了分号报错
+	{$$=$1;$$->key="Return statement";insertError(1,";","",$$->line);
+	parse_error = true;}
+	|			RETURN Opnum SEMICOLON
+	{$$=$1;$$->key="Return expr statement";insertChildren($$, $2,new Node("$", 0));}
+	|			RETURN Opnum %prec LOWEST  // return后缺少了分号报错
+	{$$=$1;$$->key="Return expr statement";insertChildren($$, $2,new Node("$", 0));
+	insertError(1,";","",$$->line);	parse_error = true;}
+	;
+BeforeMain:		Before
+	{$$=new Node("BeforeMain", 0);insertChildren($$, $1, new Node("$", 0));}
+	|			BeforeMain Before
+	{insertChildren($$, $2, new Node("$", 0));}
+	;
+
+Before: 		Include			{$$=$1;}
+	;
+
+ // 条件结构
+Condition:		IF LP Opnum RP Compound %prec LOWEST		
+	{$$=new Node("Ifbody", 0);insertChildren($$,$3,$5,new Node("$", 0));}
+	|			IF LP Opnum RP Compound ELSE Compound	
+	{$$=new Node("Elsebody", 0);insertChildren($$,$3,$5,$7,new Node("$", 0));}
+	|			IF LP Opnum RP Compound ELSE Condition		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$3,$5,$7,new Node("$", 0));}
+ 	// 缺左括号
+	|			IF Opnum RP Compound %prec LOWEST		
+	{$$=new Node("Ifbody", 0);insertChildren($$,$2,$4,new Node("$", 0));
+	insertError(1,"(","",$1->line);	parse_error = true;}
+	|			IF Opnum RP Compound ELSE Compound		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$2,$4,$6,new Node("$", 0));
+	insertError(1,"(","",$1->line);	parse_error = true;}
+	|			IF Opnum RP Compound ELSE Condition		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$2,$4,$6,new Node("$", 0));
+	insertError(1,"(","",$1->line);	parse_error = true;}
+	// 缺右括号
+	|			IF LP Opnum Compound %prec LOWEST		
+	{$$=new Node("Ifbody", 0);insertChildren($$,$3,$4,new Node("$", 0));
+	insertError(1,")","",$3->line);	parse_error = true;}
+	|			IF LP Opnum Compound ELSE Compound		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$3,$4,$6,new Node("$", 0));
+	insertError(1,")","",$3->line);	parse_error = true;}
+	|			IF LP Opnum Compound ELSE Condition		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$3,$4,$6,new Node("$", 0));
+	insertError(1,")","",$3->line);	parse_error = true;}
+	// 缺两个括号
+	|			IF Opnum Compound %prec LOWEST		
+	{$$=new Node("Ifbody", 0);insertChildren($$,$2,$3,new Node("$", 0));
+	insertError(1,"(","",$1->line);	insertError(1,")","",$2->line);
+	parse_error = true;}
+	|			IF Opnum Compound ELSE Compound	
+	{$$=new Node("Elsebody", 0);insertChildren($$,$2,$3,$5,new Node("$", 0));
+	insertError(1,"(","",$1->line);	insertError(1,")","",$2->line);
+	parse_error = true;}
+	|			IF Opnum Compound ELSE Condition		
+	{$$=new Node("Elsebody", 0);insertChildren($$,$2,$3,$5,new Node("$", 0));
+	insertError(1,"(","",$1->line);	insertError(1,")","",$2->line);
+	parse_error = true;}
+	;
+
+
+ // 循环体结构
+Loop:		FOR LP ForHeader RP Compound
+	{$$=new Node("Forloop", 0);insertChildren($$, $3, $5, new Node("$", 0));}
+	|			WHILE LP Opnum RP Compound
+	{$$=new Node("Whileloop", 0);insertChildren($$,$3,$5,new Node("$", 0));
+	if($3->key == "NULL")
+	{
+		insertError(1,"expr","",$2->line);
+		parse_error = true;
+	}}
+	|			WHILE LP RP Compound
+	{$$=new Node("Whileloop ", 0);insertChildren($$,new Node("NULL", 0),$4,new Node("$", 0));
+	insertError(1,"expr","",$2->line);parse_error = true;}
+	// 缺左括号
+	|			FOR ForHeader RP Compound
+	{$$=new Node("Forloop ", 0);insertChildren($$, $2, $4, new Node("$", 0));
+	insertError(1,"(","",$1->line);parse_error = true;}
+	|			WHILE OpnumNull RP Compound
+	{$$=new Node("Whileloop", 0);insertChildren($$, $2, $4, new Node("$", 0));
+	if($2->key == "NULL"){
+		insertError(1,"expr","",$1->line);
+	}
+	insertError(1,"(","",$1->line);parse_error = true;}
+	// 缺右括号
+	|			FOR LP ForHeader Compound
+	{$$=new Node("Forloop ", 0);insertChildren($$, $3, $4, new Node("$", 0));
+	insertError(1,")","",$3->line);parse_error = true;}
+	|			WHILE LP OpnumNull Compound
+	{$$=new Node("Whileloop", 0);insertChildren($$,$3,$4,new Node("$", 0));
+	if($3->key == "NULL"){
+		insertError(1,"expr","",$2->line);
+	}
+	insertError(1,")","",$2->line);parse_error = true;}
+	// 缺少两个括号
+	|			FOR ForHeader Compound
+	{$$=new Node("Forloop", 0);insertChildren($$, $2, $3, new Node("$", 0));
+	insertError(1,"(","",$1->line);insertError(1,")","",$2->line);
+	parse_error = true;}
+	|			WHILE OpnumNull Compound
+	{$$=new Node("Whileloop", 0);insertChildren($$,$2,$3,new Node("$", 0));
+	if($2->key == "NULL"){
+		insertError(1,"expr","",$1->line);
+	}
+	insertError(1,"(","",$1->line);insertError(1,")","",$2->line);
+	parse_error = true;}
+	;
+
+ // for循环小括号内三个表达式
+ForHeader:		VarOpnum SEMICOLON OpnumNull SEMICOLON OpnumNull // 不缺分号
+	{$$=new Node("ForHeader", 0);insertChildren($$, $1, $3, $5, new Node("$", 0));}
+	|			VarOpnum OpnumNull SEMICOLON OpnumNull // 缺第一个分号
+	{$$=new Node("ForHeader", 0);insertChildren($$, $1, $2, $4, new Node("$", 0));
+	insertError(1,";","",$1->line);parse_error = true;}
+	|			VarOpnum SEMICOLON OpnumNull OpnumNull // 缺第二个分号
+	{$$=new Node("ForHeader", 0);insertChildren($$, $1, $3, $4, new Node("$", 0));
+	insertError(1,";","",$3->line);parse_error = true;}
+	|			VarOpnum OpnumNull OpnumNull // 缺两个分号
+	{$$=new Node("ForHeader", 0);insertChildren($$, $1, $2, $3, new Node("$", 0));
+	insertError(1,";","",$1->line);insertError(1,";","",$2->line);
+	parse_error = true;}
+	;
+
+
+ // 声明变量 或者 声明变量并赋值
+VarInt:		TYPE InitInt
+	{$$=new Node("VarInt", 0);insertChildren($$, $1, $2, new Node("$", 0));
+	$2->children[0]->type = $1->key;$$->type = $1->key;
+	write_table($2->children[0]->key, $2->children[0]->type);
+	if($2->children[0]->type != $2->children[1]->type) {
+		insertError(4,$2->children[0]->type,$2->children[1]->type,$2->children[0]->line);
+		parse_error = true;}
+	}
+	|		TYPE IDdec
+	{$$=new Node("VarInt", 0);insertChildren($$, $1, $2, new Node("$", 0));
+	$2->type = $1->key;	$$->type = $1->key;
+	write_table($2->key, $$->type);}
+	|		VarInt COMMA IDdec
+	{insertChildren($$, $3, new Node("$", 0));
+	$3->type = $$->type;
+	write_table($3->key, $3->type);}
+	|		VarInt COMMA InitInt
+	{insertChildren($$, $3, new Node("$", 0));
+	$3->children[0]->type = $$->type;
+	write_table($3->children[0]->key, $3->children[0]->type);
+	if($3->children[0]->type != $3->children[1]->type) {
+		insertError(4,$3->children[0]->type,$3->children[1]->type,$3->children[0]->line);
+		parse_error = true;}
+	}
+	;
+	 
+ // 定义一个变量
+InitInt:		IDdec ASSIGN Opnum
+	{$$=new Node("InitInt", 0); insertChildren($$, $1, $3, new Node("$", 0));}
+	;
+
+ // 数组声明
+DecArray:	TYPE Array
+	{$$=new Node("DecArray", 0);insertChildren($$, $1, $2, new Node("$", 0));
+	$2->children[0]->type = $1->key + "*";
+	write_table($2->children[0]->key, $2->children[0]->type);
+	$$->type = $2->children[0]->type;$2->type = $1->key;}
+	|		DecArray COMMA Array
+	{insertChildren($$, $3,  new Node("$", 0));
+	$3->children[0]->type = $$->type;
+	write_table($3->children[0]->key, $$->type);
+	$3->type = $1->key;}
+	|		TYPE InitArray
+	{$$=new Node("DecArray", 0);insertChildren($$, $1, $2, new Node("$", 0));
+	$2->children[0]->children[0]->type = $1->key + "*";
+	write_table($2->children[0]->children[0]->key, $2->children[0]->children[0]->type);
+	$$->type = $2->children[0]->type;
+	$2->children[0]->type = $1->key;}
+	|		DecArray COMMA InitArray
+	{insertChildren($$, $3,  new Node("$", 0));
+	$3->children[0]->children[0]->type = $$->type;
+	write_table($3->children[0]->children[0]->key, $$->type);
+	$3->children[0]->type = $1->key;}
+	;
+
+ // 数组初始化
+InitArray:		Array ASSIGN LBRACE InitArrayInner RBRACE
+	{$$=new Node("InitArray", 0);insertChildren($$, $1, $4, new Node("$", 0));}
+	;
+ // 数组初始化内部
+InitArrayInner:   Const
+   {$$=new Node("InitArrayInner", 0);insertChildren($$, $1, new Node("$", 0));}
+   |              InitArrayInner COMMA Const
+   {insertChildren($$, $3,  new Node("$", 0));}
+   ;
+ // 声明或者表达式加上 ';'
+VarOpnum:	VarInt {$$=$1;}
+	|		OpnumNull {$$=$1;}   
+	// for循环第一个式子为opnum的情况
+	;
+  // Opnum或者NULL
+OpnumNull:		Opnum %prec LOWEST {$$=$1;}
+	|			%prec LOWEST {$$=new Node("NULL", 0);}			
+	;
+
+ // 表达式
+Expr:		Opnum PLUS Opnum	
+	{$$=new Node("+", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum MINUS Opnum		
+	{$$=new Node("-", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum MULTIPLY Opnum		
+	{$$=new Node("*", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum DIVIDE Opnum		
+	{$$=new Node("/", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum MODEL Opnum		
+	{$$=new Node("%", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum POW Opnum		
+	{$$=new Node("^", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum GREATER Opnum		
+	{$$=new Node(">", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum GREATEREQ Opnum		
+	{$$=new Node(">=", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum LESS Opnum		
+	{$$=new Node("<", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum LESSEQ Opnum		
+	{$$=new Node("<=", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != "int"){
+		insertError(3,$1->type,"",$$->line);
+		parse_error = true;
+	}
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum NEQUAL Opnum		
+	{$$=new Node("!=", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum EQUAL Opnum		
+	{$$=new Node("==", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum ASSIGN Opnum		
+	{$$=new Node("=", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = $1->type;}
+	|		Opnum AND Opnum		
+	{$$=new Node("&&", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = "int";}
+	|		Opnum OR Opnum		
+	{$$=new Node("||", 0);insertChildren($$,$1,$3,new Node("$", 0));
+	if($1->type != $3->type){
+		insertError(4,$1->type,$3->type,$1->line);
+		parse_error = true;
+	}
+	$$->type = "int";}
+	|		Opnum SELFPLUS
+	{$$=$2;$$->key="i++";insertChildren($$,$1,new Node("$", 0));
+	$$->type = $1->type;}
+	|		Opnum SELFMINUS
+	{$$=$2;$$->key="i--";insertChildren($$,$1,new Node("$", 0));
+	$$->type = $1->type;}
+	|		SELFPLUS Opnum		
+	{$$=new Node("++i", 0);insertChildren($$,$2,new Node("$", 0));
+	$$->type = $2->type;}
+	|		SELFMINUS Opnum		
+	{$$=new Node("--i", 0);insertChildren($$,$2,new Node("$", 0));
+	$$->type = $2->type;}
+	|		NOT Opnum		
+	{$$=new Node("!", 0);insertChildren($$,$2,new Node("$", 0));
+	$$->type = $2->type;}
+	|		ADDR Opnum		
+	{$$=new Node("&", 0);insertChildren($$,$2,new Node("$", 0));
+	$$->type = $2->type + "*";}
+	|		POINT Opnum		
+	{$$=new Node("~", 0);insertChildren($$,$2,new Node("$", 0));
+	$$->type = $2->type.substr(0, $2->type.length()-1);}
+	|		LP Opnum RP %prec LOWEST
+	{$$=$2;}
+	;
+ //操作数
+Opnum:		Const	{$$=$1;}
+	|		IDdec	{$$=$1;}
+	|		Expr 	{$$=$1;}
+	|		Array	{$$=$1;}
+	;
+
+Array:		IDdec LMB Opnum RMB 
+	{$$=new Node("Array", 0);insertChildren($$, $1, $3, new Node("$", 0));
+	$$->type = $1->type.substr(0, $1->type.length()-1);}
+	;
+
+ //标识符声明
+IDdec:		ID
+	{$$=$1;
+	if(countid($$->key) != 0) {
+		$$->type = table[$$->key]->type;
+	}}
+	;
+
+Include:	INCLUDE
+	{$$=new Node("Include ", 0);insertChildren($$, $1, new Node("$", 0));}
+	;
+
+ //常量
+Const:		INTEGER		{$$=$1;$$->type = "int";}
+	|		MINUS INTEGER %prec MINUSINTEGER
+	{$$=$2;$$->type = "int";$$->key = "-"+$$->key;$$->val = -$$->val;}
+	;
+
+
 %%
 
-program: headers  main '(' ')' '{' body return '}' { $2.nd = mknode($6.nd, $7.nd, "main","Main Function"); $$.nd = mknode($1.nd, $2.nd, "program","Program Compound"); head = $$.nd; }
-;
-
-headers: headers headers { $$.nd = mknode($1.nd, $2.nd, "headers","Header"); }
-| INCLUDE { add('H'); }  { $$.nd = mknode(NULL, NULL, $1.name,"Include"); }
-;
-
-
-main: datatype ID { add('F'); }
-;
-
-datatype: INT { insert_type(); }
-| FLOAT { insert_type(); }
-| CHAR { insert_type(); }
-| VOID { insert_type(); }
-;
-
-body: FOR {add('K'); is_for = 1; } '(' statement ';' condition ';' statement ')' '{' {newscope();} body {delscope();}'}' {
-	 struct node *temp = mknode($6.nd, $8.nd, "CONDITION","Forloop Condition");
-	 struct node *temp2 = mknode($4.nd, temp, "CONDITION","Forloop Condition");
-	 $$.nd = mknode(temp2, $12.nd, $1.name,"Forloop Compound");
-	 sprintf(icg[ic_idx++], buff);
-	 sprintf(icg[ic_idx++], "JUMP to %s\n", $6.if_body);
-	 sprintf(icg[ic_idx++], "\nLABEL %s:\n", $6.else_body);
-  }
-| WHILE { add('K'); is_for = 2; } '(' condition ')' '{'{newscope();} body {delscope();} '}' {
-  	$$.nd = mknode($4.nd, $8.nd, $1.name,"WhileCompound");
-  	sprintf(icg[ic_idx++], buff);
-  	sprintf(icg[ic_idx++], "JUMP to %s\n", $4.if_body);
-  	sprintf(icg[ic_idx++], "\nLABEL %s:\n", $4.else_body);
-  	}
-| IF { add('K'); is_for = 0; } '(' condition ')'  { sprintf(icg[ic_idx++], "\nLABEL %s:\n", $4.if_body); } '{' {newscope();} body {delscope();} '}' { sprintf(icg[ic_idx++], "\nLABEL %s:\n", $4.else_body); }  else {
-	struct node *iff = mknode($4.nd, $9.nd, $1.name,"If Compound");
-	$$.nd = mknode(iff, $13.nd, "if-else","if-else Compound");
-        sprintf(icg[ic_idx++], "GOTO next\n");
-	}
-| statement ';' { $$.nd = $1.nd; }
-| body body { $$.nd = mknode($1.nd, $2.nd, "statements","Compound"); }
-| PRINTFF { add('K'); } '(' ans ')' ';' {  $$.nd = mknode($4.nd, NULL, "printf","Printf Function"); }
-| SCANFF  { add('K'); } '(' STR ',' '&' ID ')' ';' { $$.nd = mknode(NULL, NULL, "scanf","Scanf Function"); }
-;
-
-ans:STR {struct node *temp =mknode(NULL,NULL,$1.name,"STR"); $$.nd=temp;}
-| value {struct node *temp =mknode(NULL,NULL,$1.name,"Printf Content"); $$.nd=temp;}
-| ans ',' ans {$$.nd=mknode($1.nd,$3.nd,"content","Printf Content");}
-;
-else: ELSE  { add('K'); } '{' body '}' { $$.nd = mknode(NULL, $4.nd, $1.name,"Else Compound"); }
-| { $$.nd = NULL; }
-;
-
-condition: value relop value {
-  $$.nd = mknode($1.nd, $3.nd, $2.name,"Condition Expression");
-  if(is_for==1||is_for==2) {
-  		sprintf($$.if_body, "L%d", label++);
-  		sprintf(icg[ic_idx++], "\nLABEL %s:\n", $$.if_body);
-  		sprintf(icg[ic_idx++], "\nif NOT (%s %s %s) GOTO L%d\n", $1.name, $2.name, $3.name, label);
-  		sprintf($$.else_body, "L%d", label++);
-  	}
-      else {
-  		sprintf(icg[ic_idx++], "\nif (%s %s %s) GOTO L%d else GOTO L%d\n", $1.name, $2.name, $3.name, label, label+1);
-  		sprintf($$.if_body, "L%d", label++);
-  		sprintf($$.else_body, "L%d", label++);
-  	}
-  }
-| TRUE { add('K'); $$.nd = NULL; }
-| FALSE { add('K'); $$.nd = NULL; }
-| NOO value { $$.nd = mknode($2.nd, NULL, "!","Condition Expression"); }
-| value { $$.nd = mknode($1.nd, NULL, "","Condition Expression"); }
-| { $$.nd = NULL; }
-| condition luoji condition {$$.nd = mknode($1.nd, $3.nd, $2.name,"Condition Expression");}
-;
-
-value:FLOAT_NUM { strcpy($$.name, $1.name); sprintf($$.type, "float");$$.nd = mknode(NULL, NULL, $1.name,"Folat Declaration"); }
-| CHARACTER { strcpy($$.name, $1.name); sprintf($$.type, "char");$$.nd = mknode(NULL, NULL, $1.name,"Char Declaration"); }
-| fei
-| value ope value  { $$.nd = mknode($1.nd, $3.nd ,$2.name,"Expression"); }
-;
-
-fei:NOO ID {check_declaration($2.name);strcpy($$.name, $1.name); char *id_type = get_type($1.name);struct node * temp= mknode(NULL, NULL, $2.name,"ID Declaration"); $$.nd=mknode(temp,NULL,"!","NOT");}
-|ID {check_declaration($1.name);strcpy($$.name, $1.name); char *id_type = get_type($1.name); $$.nd = mknode(NULL, NULL, $1.name,"ID Declaration"); }
-|NUMBER { strcpy($$.name, $1.name); sprintf($$.type, "int"); add('C'); $$.nd = mknode(NULL, NULL, $1.name,"Number Declaration"); }
-|NOO NUMBER {strcpy($$.name, $1.name); sprintf($$.type, "int"); add('C'); struct node * temp= mknode(NULL, NULL, $2.name,"Number Declaration"); $$.nd=mknode(temp,NULL,"!","NOT");}
-;
-
-luoji:AND
-| OR
-;
-
-ope:MULTIPLY
-|DIVIDE
-|SUBTRACT
-|ADD
-|MODE
-;
-
-statement: datatype ID { add('V'); } init hhh {
-	$2.nd = mknode(NULL, NULL, $2.name,"ID Declaration");
-	int t = check_types($1.name, $4.type);
-        	if(t>0) {
-        		if(t == 1) {
-        			struct node *temp = mknode(NULL, $4.nd, "floattoint","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        		else if(t == 2) {
-        			struct node *temp = mknode(NULL, $4.nd, "inttofloat","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        		else if(t == 3) {
-        			struct node *temp = mknode(NULL, $4.nd, "chartoint","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        		else if(t == 4) {
-        			struct node *temp = mknode(NULL, $4.nd, "inttochar","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        		else if(t == 5) {
-        			struct node *temp = mknode(NULL, $4.nd, "chartofloat","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        		else{
-        			struct node *temp = mknode(NULL, $4.nd, "floattochar","");
-        			$$.nd = mknode($2.nd, temp, "declaration","");
-        		}
-        	}
-        else{
-	struct node *temp = mknode($2.nd, $4.nd, "=","Assignment");
-	$$.nd=mknode(temp,$4.nd,"Declaration","");
-	}
-	sprintf(icg[ic_idx++], "%s = %s\n", $2.name, $4.name);
-	}
-| ID { check_declaration($1.name); } '=' expression {
- 	$1.nd = mknode(NULL, NULL, $1.name,"ID Declaration");
- 	char *id_type = get_type($1.name);
- 	if(id_type){
- 	if(strcmp(id_type, $4.type)) {
-        		if(!strcmp(id_type, "int")) {
-        			if(!strcmp($4.type, "float")){
-        				struct node *temp = mknode(NULL, $4.nd, "floattoint","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-        			else{
-        				struct node *temp = mknode(NULL, $4.nd, "chartoint","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-
-        		}
-        		else if(!strcmp(id_type, "float")) {
-        			if(!strcmp($4.type, "int")){
-        				struct node *temp = mknode(NULL, $4.nd, "inttofloat","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-        			else{
-        				struct node *temp = mknode(NULL, $4.nd, "chartofloat","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-
-        		}
-        		else{
-        			if(!strcmp($4.type, "int")){
-        				struct node *temp = mknode(NULL, $4.nd, "inttochar","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-        			else{
-        				struct node *temp = mknode(NULL, $4.nd, "floattochar","");
-        				$$.nd = mknode($1.nd, temp, "=","");
-        			}
-        		}
-        	}
-        	else {
-        		 $$.nd = mknode($1.nd, $4.nd, "=","Assignment");
-        	}
-        		sprintf(icg[ic_idx++], "%s = %s\n", $1.name, $4.name);
- 	}
- }
-| ID { check_declaration($1.name); } relop expression { $1.nd = mknode(NULL, NULL, $1.name,"ID Declaration"); $$.nd = mknode($1.nd, $4.nd, $3.name,""); }
-| ID { check_declaration($1.name); } UNARY {
-	$1.nd = mknode(NULL, NULL, $1.name,"ID Declaration");
-	$3.nd = mknode(NULL, NULL, $3.name,"");
-	$$.nd = mknode($1.nd, $3.nd, "ITERATOR","");
-	if(!strcmp($3.name, "++")) {
-        		sprintf(buff, "t%d = %s + 1\n%s = t%d\n", temp_var, $1.name, $1.name, temp_var++);
-        	}
-        	else {
-        		sprintf(buff, "t%d = %s + 1\n%s = t%d\n", temp_var, $1.name, $1.name, temp_var++);
-        	}
-	}
-| UNARY ID {
-	check_declaration($2.name);
-	$1.nd = mknode(NULL, NULL, $1.name,"");
-	$2.nd = mknode(NULL, NULL, $2.name,"ID Declaration");
-	$$.nd = mknode($1.nd, $2.nd, "ITERATOR","");
-	if(!strcmp($1.name, "++")) {
-        	sprintf(buff, "t%d = %s + 1\n%s = t%d\n", temp_var, $2.name, $2.name, temp_var++);
-        }
-        else {
-        	sprintf(buff, "t%d = %s - 1\n%s = t%d\n", temp_var, $2.name, $2.name, temp_var++);
-
-        }
-}
-;
-
-hhh:',' ID { add('V');} '=' expression {$2.nd=mknode(NULL,NULL,$2.name,"ID Declaration"),$$.nd=mknode($2.nd,$5.nd,"=","Assignment");}
-| { $$.nd = NULL;}
-;
-
-init: '=' value { $$.nd = $2.nd; sprintf($$.type, $2.type); strcpy($$.name, $2.name);}
-| {sprintf($$.type, "null"); $$.nd = mknode(NULL, NULL, "Assignment","Expression");strcpy($$.name, "NULL");  }
-;
-
-expression: expression arithmetic2 txpression {
-	if(!strcmp($1.type, $3.type)) {
-		sprintf($$.type, $1.type);
-		$$.nd = mknode($1.nd, $3.nd, $2.name,"Expression");
-	}
-	else {
-        	if(!strcmp($1.type, "int") && !strcmp($3.type, "float")) {
-        		struct node *temp = mknode(NULL, $1.nd, "inttofloat","");
-        		sprintf($$.type, $3.type);
-        		$$.nd = mknode(temp, $3.nd, $2.name,"");
-        	}
-        	else if(!strcmp($1.type, "float") && !strcmp($3.type, "int")) {
-        		struct node *temp = mknode(NULL, $3.nd, "inttofloat","");
-        		sprintf($$.type, $1.type);
-        		$$.nd = mknode($1.nd, temp, $2.name,"");
-        	}
-        	else if(!strcmp($1.type, "int") && !strcmp($3.type, "char")) {
-        		struct node *temp = mknode(NULL, $3.nd, "chartoint","");
-        		sprintf($$.type, $1.type);
-        		$$.nd = mknode($1.nd, temp, $2.name,"");
-        	}
-        	else if(!strcmp($1.type, "char") && !strcmp($3.type, "int")) {
-        		struct node *temp = mknode(NULL, $1.nd, "chartoint","");
-        		sprintf($$.type, $3.type);
-        		$$.nd = mknode(temp, $3.nd, $2.name,"");
-        	}
-        	else if(!strcmp($1.type, "float") && !strcmp($3.type, "char")) {
-        		struct node *temp = mknode(NULL, $3.nd, "chartofloat","");
-        		sprintf($$.type, $1.type);
-        		$$.nd = mknode($1.nd, temp, $2.name,"");
-        	}
-        	else {
-        		struct node *temp = mknode(NULL, $1.nd, "chartofloat","");
-        		sprintf($$.type, $3.type);
-        		$$.nd = mknode(temp, $3.nd, $2.name,"");
-        	}
-       	}
-        sprintf($$.name, "t%d", temp_var);
-        temp_var++;
-       	sprintf(icg[ic_idx++], "%s = %s %s %s\n",  $$.name, $1.name, $2.name, $3.name);
- }
-| txpression { $$.nd = $1.nd; }
-;
-
-txpression: txpression arithmetic1 hxpression { $$.nd = mknode($1.nd, $3.nd, $2.name,"Expression"); }
-| hxpression { $$.nd = $1.nd; }
-;
-
-hxpression:hxpression MODE hxpression { $$.nd = mknode($1.nd, $3.nd, $2.name,"Expression"); }
-| value {strcpy($$.name, $1.name); sprintf($$.type, $1.type); $$.nd = $1.nd; }
-;
-
-arithmetic1:MULTIPLY
-| DIVIDE
-;
-
-arithmetic2:ADD
-| SUBTRACT
-;
-
-relop: LT
-| GT
-| LE
-| GE
-| EQ
-| NE
-;
-
-return: RETURN { add('K'); }  value ';' { check_return_type($3.name);$1.nd = mknode(NULL, NULL, "return",""); $$.nd = mknode($1.nd, $3.nd, "RETURN",""); }
-| { $$.nd = NULL; }
-;
-
-%%
-
-int main() {
-   yyparse();
-       printf("\n\n");
-   	printf("\t\t\t\t\t\t\t\t PHASE 1: LEXICAL ANALYSIS \n\n");
-   	printf("\nSYMBOL   DATATYPE   TYPE   LINE NUMBER \n");
-   	printf("_______________________________________\n\n");
-   	int i=0;
-   	for(i=0; i<count; i++) {
-   		printf("%s\t%s\t%s\t%d\t\n", symbol_table[i].id_name, symbol_table[i].data_type, symbol_table[i].type, symbol_table[i].line_no);
-   	}
-   	for(i=0;i<count;i++) {
-   		free(symbol_table[i].id_name);
-   		free(symbol_table[i].type);
-   	}
-   	printf("\n\n");
-   	printf("\t\t\t\t\t\t\t\t PHASE 2: SYNTAX ANALYSIS \n\n");
-   	printtree(head);
-   	printf("\n\n\n\n");
-   	printf("\t\t\t\t\t\t\t\t PHASE 3: SEMANTIC ANALYSIS \n\n");
-   	if(sem_errors>0) {
-   		printf("Semantic analysis completed with %d errors\n", sem_errors);
-   		for(int i=0; i<sem_errors; i++){
-   			printf("\t - %s", errors[i]);
-   		}
-   	} else {
-   		printf("Semantic analysis completed with no errors");
-   	}
-   	printf("\n\n");
-   	printf("\t\t\t\t\t\t\t   PHASE 4: INTERMEDIATE CODE GENERATION \n\n");
-   	for(int i=0; i<ic_idx; i++){
-   		printf("%s", icg[i]);
-   	}
-   	printf("\n\n");
-}
-int search(char *type) {
-	int i;
-	for(i=count-1; i>=0; i--) {
-		if(strcmp(symbol_table[i].id_name, type)==0) {
-			return -1;
-			break;
-		}
-	}
+int yyerror(const char* msg)
+{
+	printf("%s", msg);
 	return 0;
 }
-void check_declaration(char *c) {
-    q = search(c);
-    if(!q) {
-        sprintf(errors[sem_errors], "Line %d: Variable \"%s\" not declared before usage!\n", countn+1, c);
-		sem_errors++;
-    }
-}
 
-void check_return_type(char *value) {
-	char *main_datatype = get_type("main");
-	char *return_datatype = get_type(value);
-	if((!strcmp(main_datatype, "int") && !strcmp(return_datatype, "CONST")) || !strcmp(main_datatype, return_datatype)){
-		return ;
-	}
-	else {
-		sprintf(errors[sem_errors], "Line %d: Return type mismatch\n", countn+1);
-		sem_errors++;
-	}
-}
-
-int check_types(char *type1, char *type2){
-	// declaration with no init
-	if(!strcmp(type2, "null"))
-		return -1;
-	// both datatypes are same
-	if(!strcmp(type1, type2))
-		return 0;
-	// both datatypes are different
-	if(!strcmp(type1, "int") && !strcmp(type2, "float"))
-		return 1;
-	if(!strcmp(type1, "float") && !strcmp(type2, "int"))
-		return 2;
-	if(!strcmp(type1, "int") && !strcmp(type2, "char"))
-		return 3;
-	if(!strcmp(type1, "char") && !strcmp(type2, "int"))
-		return 4;
-	if(!strcmp(type1, "float") && !strcmp(type2, "char"))
-		return 5;
-	if(!strcmp(type1, "char") && !strcmp(type2, "float"))
-		return 6;
-}
-
-char *get_type(char *var){
-	for(int i=0; i<count; i++) {
-		// Handle case of use before declaration
-		if(!strcmp(symbol_table[i].id_name, var)) {
-			return symbol_table[i].data_type;
+//打印整个树的形状
+void print(Node* p, int interval){
+	for(int i=0;i<interval;i++)
+	{
+		if(i<interval-1)
+		{
+			cout<<"| ";
+		}
+		else if(i==interval-1)
+		{
+			cout<<"|";
 		}
 	}
-	return NULL;
+	cout << "——▶" << p->key << "    " << p->type << endl;
+	for(int i=0;i<p->children.size();i++)
+	{
+		print(p->children[i], interval+1);
+	}
 }
 
-void add(char c) {
-	if(c == 'V'){
-		for(int i=0; i<13; i++){
-			if(!strcmp(reserved[i], strdup(yytext))){
-        		sprintf(errors[sem_errors], "Line %d: Variable name \"%s\" is a reserved keyword!\n", countn+1, yytext);
-				sem_errors++;
-				return;
+//新建一个节点，并且将从下方传递来的节点加入其子结点
+void insertChildren(Node*par, ...){
+	va_list list;
+	va_start(list,par);
+	Node *child;
+	int count=0;
+	while(1)
+	{
+		count++;
+		child = va_arg(list, Node*);
+		if(child!=NULL)
+		{
+			if(child->key != "$")
+			{
+				par->join_Children(child);
+				if(child->line > par->line)
+				{
+					par->line = child->line;
+				}
+				if(child->line < par->line)
+				{
+					child->line = par->line;
+				}
+			}
+			else
+				break;
+		}
+		else
+			continue;
+		}
+		va_end(list);
+}
+
+//处理返回语句的语法错误
+void returnError(Node*t, Node*root){
+	printf("\n\n");
+   	printf("\t\t\t\t PHASE 2: SYNTAX ANALYSIS \n\n");
+   	for (int i = 0; i < cntt; i++) {
+		printf("%s",error_str[i]);
+	}
+
+	bool k = true;	// 是否需要返回值
+	bool hasret = false;
+	if (t->key=="VOID"){
+		k = false;
+	}
+
+	Node* p;
+	deque<Node*> dq;
+	dq.push_back(root);
+	while(!dq.empty()){
+		p = dq.front();
+		dq.pop_front();
+		for(int i = 0; i < p->children.size(); i++)
+		{
+			dq.push_back(p->children[i]);
+			if(!hasret && (p->children[i]->key == "Return expr statement" || p->children[i]->key == "Return statement")){
+				hasret = true;
+			}
+			if (hasret) {
+				if(p->children[i]->key == "Return expr statement" && !k) {
+					// void不需要返回语句或者可以只return，所以当return expr时报错
+					cout<<"return error : unexpected expr after return at line "<<p->children[i]->line<<endl;
+					parse_error = true;
+				}
+				else if (p->children[i]->key == "Return statement" && k) {
+					// type需要return expr，因此无return报错
+					cout<<"return error : need expr after return at line "<<p->children[i]->line<<endl;
+					parse_error = true;
+				}
 			}
 		}
 	}
-    q=search(yytext);
-	if(!q) {
-		if(c == 'H') {
-			symbol_table[count].id_name=strdup(yytext);
-			symbol_table[count].data_type=strdup(type);
-			symbol_table[count].line_no=countn;
-			symbol_table[count].type=strdup("Header");
-			count++;
-		}
-		else if(c == 'K') {
-			symbol_table[count].id_name=strdup(yytext);
-			symbol_table[count].data_type=strdup("N/A");
-			symbol_table[count].line_no=countn;
-			symbol_table[count].type=strdup("Keyword\t");
-			count++;
-		}
-		else if(c == 'V') {
-			symbol_table[count].id_name=strdup(yytext);
-			symbol_table[count].data_type=strdup(type);
-			symbol_table[count].line_no=countn;
-			symbol_table[count].type=strdup("Variable");
-			count++;
-		}
-		else if(c == 'C') {
-			symbol_table[count].id_name=strdup(yytext);
-			symbol_table[count].data_type=strdup("CONST");
-			symbol_table[count].line_no=countn;
-			symbol_table[count].type=strdup("Constant");
-			count++;
-		}
-		else if(c == 'F') {
-			symbol_table[count].id_name=strdup(yytext);
-			symbol_table[count].data_type=strdup(type);
-			symbol_table[count].line_no=countn;
-			symbol_table[count].type=strdup("Function");
-			count++;
-		}
-    }
-    else if(c == 'V' && q) {
-        sprintf(errors[sem_errors], "Line %d: Multiple declarations of \"%s\" not allowed!\n", countn+1, yytext);
-		sem_errors++;
-    }
-}
-struct node* mknode(struct node *left, struct node *right, char *token,char *type) {
-	struct node *newnode = (struct node *)malloc(sizeof(struct node));
-	char *newtok = (char *)malloc(strlen(token)+1);
-	strcpy(newtok, token);
-
-	char *newtype = (char *)malloc(strlen(type)+1);
-	strcpy(newtype, type);
-
-	newnode->left = left;
-	newnode->right = right;
-	newnode->token = newtok;
-	newnode->type = newtype;
-	return(newnode);
+	if (!hasret && k) {
+		cout<<"int main() need a return statement"<<endl;
+		parse_error = true;
+	}
 }
 
-void printtree(struct node* tree) {
-	Display(tree, 0);
+void insertError(int type, string arg1, string arg2, int line){
+	switch (type)
+	{
+	case 1:
+		sprintf(error_str[cntt++],"need a %s in line %d\n", arg1.c_str(), line);
+		break;
+	case 2:
+		sprintf(error_str[cntt++],"need a %s and a %s in line %d\n", arg1.c_str(), arg2.c_str(), line);
+		break;
+	case 3:
+		sprintf(error_str[cntt++],"type error: %s is not int in line %d\n", arg1.c_str(), line);
+		break;
+	case 4:
+		sprintf(error_str[cntt++],"type error: %s and %s in line %d\n", arg1.c_str(), arg2.c_str(), line);
+		break;
+	default:
+		break;
+	}
 }
 
-void Display(struct node* root, int ident)
+int main()
 {
-    if(ident > 0)
-    {
-        for(int i = 0; i < ident - 1; ++i)
-        {
-            printf(vec_left[i] ? "|    " : "    ");
-        }
-        printf(vec_left[ident-1] ? "{---- " : "+---- ");
-    }
-
-    if(!root)
-    {
-        printf("(null)\n");
-        return;
-    }
-
-    printf("%s: %s\n", root->type,root->token);
-    if(!root->left && !root->right)
-    {
-        return;
-    }
-
-    vec_left[ident] = 1;
-    Display(root->left, ident + 1);
-    vec_left[ident] = 0;
-    Display(root->right, ident + 1);
-}
-
-void printInorder(struct node *tree) {
-	int i;
-	if (tree->left) {
-		printInorder(tree->left);
+	printf("\n\t\t\t\t PHASE 1: LEXICAL ANALYSIS\n\n");
+	printf("\nSYMBOL\t\tDATATYPE\tTYPE\t\tLINE NUMBER \n");
+	yyparse();
+	if(!parse_error)
+	{
+		gen_code(root);
+		printf("\n\n");
+		printf("\t\t\t\t PHASE 3: INTERMEDIATE CODE GENERATION \n\n");
+		print_address();
+		printf("\n");
+		write_asm();
 	}
-	printf("%s,%s", tree->type,tree->token);
-	if (tree->right) {
-		printInorder(tree->right);
+	else {
+		cout<<"parse_error"<<endl;
 	}
-}
-void insert_type() {
-	strcpy(type, yytext);
-}
-void newscope(){
-	symbol_table[count].id_name="{{";
-        symbol_table[count].data_type="flag";
-        symbol_table[count].line_no=0;
-        symbol_table[count].type="flag";
-        count++;
-}
-void delscope(){
- 	int i;
-        for(i=count-1; i>=0; i--) {
-
-        	if(strcmp(symbol_table[i].id_name, "{{")==0) {
-        		count--;
-        		break;
-        	}
-        	else{
-        		count--;
-        	}
-        }
-}
-void yyerror(const char* msg) {
-    fprintf(stderr, "%s\n", msg);
 }
